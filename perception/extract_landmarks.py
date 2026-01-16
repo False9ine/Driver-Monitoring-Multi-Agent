@@ -9,33 +9,20 @@ OUT_DIR = os.path.join(BASE_DIR, "data", "landmarks")
 
 os.makedirs(OUT_DIR, exist_ok=True)
 
-print("\n📂 RAW VIDEOS FOUND:")
-for f in os.listdir(RAW_DIR):
-    print(" -", repr(f))
+mp_pose = mp.solutions.pose
 
 def extract_landmarks(video_path, save_path):
-    print(f"🔍 Opening video: {os.path.basename(video_path)}")
+    print(f"\n🎥 Processing video: {os.path.basename(video_path)}")
 
     cap = cv2.VideoCapture(video_path)
     frames = []
 
-    if not cap.isOpened():
-        print(f"❌ Cannot open {video_path}")
-        return
-
-    # ⚠️ IMPORTANT: MediaPipe initialized PER VIDEO
-    with mp.solutions.pose.Pose(
+    with mp_pose.Pose(
         static_image_mode=False,
         model_complexity=1,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5
-    ) as pose, mp.solutions.face_mesh.FaceMesh(
-        static_image_mode=False,
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5
-    ) as face_mesh:
+        min_detection_confidence=0.3,
+        min_tracking_confidence=0.3
+    ) as pose:
 
         while True:
             ret, frame = cap.read()
@@ -43,34 +30,27 @@ def extract_landmarks(video_path, save_path):
                 break
 
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            result = pose.process(rgb)
 
-            pose_result = pose.process(rgb)
-            face_result = face_mesh.process(rgb)
-
-            if pose_result.pose_landmarks and face_result.multi_face_landmarks:
-                frames.append((
-                    pose_result.pose_landmarks.landmark,
-                    face_result.multi_face_landmarks[0].landmark
-                ))
+            if result.pose_landmarks:
+                lm = result.pose_landmarks.landmark
+                if len(lm) == 33:
+                    frames.append(lm)
 
     cap.release()
 
     if len(frames) == 0:
-        print(f"⚠️ No landmarks detected in {os.path.basename(video_path)}")
+        print(f"⚠️ No pose landmarks detected in {os.path.basename(video_path)}")
         return
 
-    np.save(save_path, frames)
-    print(f"✅ Saved {len(frames)} frames → {os.path.basename(save_path)}")
+    np.save(save_path, frames, allow_pickle=True)
+    print(f"✅ Saved {len(frames)} pose frames → {os.path.basename(save_path)}")
 
-# -----------------------------
-# PROCESS ALL VIDEOS
-# -----------------------------
 for video in sorted(os.listdir(RAW_DIR)):
     if video.lower().endswith(".mp4"):
-        video_path = os.path.join(RAW_DIR, video)
-        save_path = os.path.join(OUT_DIR, os.path.splitext(video)[0] + ".npy")
+        extract_landmarks(
+            os.path.join(RAW_DIR, video),
+            os.path.join(OUT_DIR, os.path.splitext(video)[0] + ".npy")
+        )
 
-        print(f"\n🎥 Processing: {video}")
-        extract_landmarks(video_path, save_path)
-
-print("\n🎉 Landmark extraction finished for ALL videos.")
+print("\n🎉 Pose landmark extraction finished.")

@@ -10,16 +10,26 @@ scipy
 opencv-python
 
 # =============================
-# Face Landmarks
+# Face / Pose Landmarks
 # =============================
 mediapipe==0.10.9
 
 # =============================
-# Visualization (Optional but useful)
+# Visualization
 # =============================
 matplotlib
 
 # =============================
-# Development Utilities
+# Reinforcement Learning
+# =============================
+torch>=2.0.0
+
+# =============================
+# Evaluation Metrics
+# =============================
+scikit-learn
+
+# =============================
+# Utilities
 # =============================
 tqdm
