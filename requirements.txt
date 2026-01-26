@@ -33,3 +33,13 @@ scikit-learn
 # Utilities
 # =============================
 tqdm
+
+#speech
+
+librosa
+joblib
+soundfile
+
+#rl_taining
+
+gym
