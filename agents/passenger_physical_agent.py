@@ -1,85 +1,56 @@
+import os
 import numpy as np
-import torch
+import joblib
 
-from rl_training.model import DQN
-from rl_training.passenger_env import PassengerSafetyEnv
+from passenger.state_builder import build_motion_state
+from passenger.build_sequences import window_sequence
 
 
 class PassengerPhysicalAgent:
     """
-    High-sensitivity physical anomaly detector.
-
-    Uses a trained RL policy to detect sustained abnormal
-    passenger motion from pose-based feature sequences.
+    Physical agent that estimates passenger motion risk.
+    Output: physical_risk ∈ [0, 1]
     """
 
-    def __init__(
-        self,
-        model_path="rl_training/passenger_dqn.pth",
-        high_percentile=85,
-        min_frames=20,
-        persist_ratio=0.10,
-        device=None
-    ):
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    def __init__(self):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        model_path = os.path.join(base_dir, "passenger", "physical_model.pkl")
 
-        self.model = DQN(input_dim=6, num_actions=3).to(self.device)
-        self.model.load_state_dict(
-            torch.load(model_path, map_location=self.device)
-        )
-        self.model.eval()
 
-        # Detection hyperparameters (FROZEN)
-        self.high_percentile = high_percentile
-        self.min_frames = min_frames
-        self.persist_ratio = persist_ratio
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(
+                "Physical model not found. "
+                "Run passenger/train_physical_model.py first."
+            )
 
-    def detect_physical_anomaly(self, motion_sequence):
+        self.model = joblib.load(model_path)
+
+    def infer(self, landmarks: np.ndarray) -> float:
         """
-        Detects sustained physical anomaly.
-
         Args:
-            motion_sequence (np.ndarray):
-                Shape: (T, 6)
+            landmarks (np.ndarray): shape (T, 33, 4)
 
         Returns:
-            int:
-                1 -> physical anomaly detected
-                0 -> no anomaly
+            float: physical risk in [0, 1]
         """
 
-        if motion_sequence is None or len(motion_sequence) == 0:
-            return 0
+        # Step 1: landmarks → motion features
+        motion = build_motion_state(landmarks)
 
-        env = PassengerSafetyEnv(motion_sequence)
-        state = env.reset()
-        done = False
+        if len(motion) == 0:
+            return 0.0
 
-        risks = []
+        # Step 2: motion → temporal windows
+        windows = window_sequence(motion)
 
-        while not done:
-            state_tensor = torch.tensor(
-                state, dtype=torch.float32
-            ).to(self.device)
+        if len(windows) == 0:
+            return 0.0
 
-            with torch.no_grad():
-                q_vals = self.model(state_tensor)
-                risk = torch.max(q_vals).item()
+        # Step 3: predict risk per window
+        risks = self.model.predict(windows)
 
-            risks.append(risk)
-            state, _, done = env.step(0)
+        # Step 4: temporal aggregation
+        physical_risk = float(np.mean(risks))
 
-        risks = np.array(risks)
-        total_frames = len(risks)
-
-        # Extreme-motion threshold (relative)
-        high_thr = np.percentile(risks, self.high_percentile)
-        high_frames = np.sum(risks >= high_thr)
-
-        # Temporal persistence constraint
-        required_frames = max(
-            self.min_frames,
-            int(self.persist_ratio * total_frames)
-        )
-
-        return int(high_frames >= required_frames)
+        # Safety clamp
+        return float(np.clip(physical_risk, 0.0, 1.0))

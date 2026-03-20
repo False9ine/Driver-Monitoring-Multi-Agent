@@ -41,4 +41,4 @@ class EyeStateAgent:
         score = (ear - self.EAR_MIN) / (self.EAR_MAX - self.EAR_MIN)
         score = float(np.clip(score, 0.0, 1.0))
 
-        return score, {"ear": float(ear)}
+        return float(np.clip(score, 0.0, 1.0))

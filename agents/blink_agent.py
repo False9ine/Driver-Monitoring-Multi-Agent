@@ -71,7 +71,7 @@ class BlinkPatternAgent:
                    0.3 * duration_norm +
                    0.3 * perclos)
 
-        score = float(np.clip(1.0 - fatigue, 0.0, 1.0))
+        return float(np.clip(1.0 - fatigue, 0.0, 1.0))
 
         meta = {
             "perclos": float(perclos),

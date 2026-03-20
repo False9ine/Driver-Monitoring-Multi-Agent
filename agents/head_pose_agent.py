@@ -78,4 +78,9 @@ class HeadPoseAgent:
             return self._neutral()
 
     def _neutral(self):
-        return {"score": 0.5, "pitch": 0.0, "yaw": 0.0, "roll": 0.0}
+        return {
+            "score": 0.5,
+            "pitch": 0.0,
+            "yaw": 0.0,
+            "roll": 0.0
+        }

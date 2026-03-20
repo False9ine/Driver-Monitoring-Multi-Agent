@@ -1,52 +1,54 @@
 import numpy as np
 
-class PassengerStateBuilder:
-    def __init__(self):
-        self.prev_pose = None
+# Upper-body landmark indices (MediaPipe Pose)
+UPPER_BODY = [
+    11, 12,  # shoulders
+    13, 14,  # elbows
+    15, 16   # wrists
+]
 
-    def _pt(self, lm):
-        return np.array([lm.x, lm.y], dtype=np.float32)
 
-    def _vel(self, a, b):
-        return np.linalg.norm(a - b)
+def build_motion_state(landmark_sequence: np.ndarray) -> np.ndarray:
+    """
+    Converts pose landmarks into motion-based features.
 
-    def build_state(self, pose):
-        # MediaPipe Pose indices
-        HEAD = 0
-        LS = 11
-        RS = 12
-        LW = 15
-        RW = 16
+    Args:
+        landmark_sequence (np.ndarray):
+            Shape (T, 33, 4) → x, y, z, visibility
 
-        head = self._pt(pose[HEAD])
-        ls = self._pt(pose[LS])
-        rs = self._pt(pose[RS])
-        lw = self._pt(pose[LW])
-        rw = self._pt(pose[RW])
+    Returns:
+        np.ndarray:
+            Shape (T-1, 6)
+    """
 
-        # First frame
-        if self.prev_pose is None:
-            self.prev_pose = (head, ls, rs, lw, rw)
-            return np.zeros(6, dtype=np.float32)
+    if len(landmark_sequence) < 2:
+        return np.empty((0, 6))
 
-        ph, pls, prs, plw, prw = self.prev_pose
+    motion_features = []
 
-        head_v = self._vel(head, ph)
-        torso_w = np.linalg.norm(ls - rs)
-        torso_v = abs(torso_w - np.linalg.norm(pls - prs))
-        left_v = self._vel(lw, plw)
-        right_v = self._vel(rw, prw)
+    for t in range(1, len(landmark_sequence)):
+        prev = landmark_sequence[t - 1]
+        curr = landmark_sequence[t]
 
-        motion_energy = head_v + torso_v + left_v + right_v
+        velocities = []
 
-        self.prev_pose = (head, ls, rs, lw, rw)
+        for idx in UPPER_BODY:
+            dx = curr[idx, 0] - prev[idx, 0]
+            dy = curr[idx, 1] - prev[idx, 1]
+            velocities.append(np.sqrt(dx * dx + dy * dy))
 
-        # 🔥 IMPORTANT: NO NORMALIZATION HERE
-        return np.array([
-            head_v,
-            torso_w,
-            torso_v,
-            left_v,
-            right_v,
-            motion_energy
-        ], dtype=np.float32)
+        velocities = np.array(velocities)
+
+        # 6D motion descriptor
+        features = [
+            np.mean(velocities),         # mean velocity
+            np.max(velocities),          # max velocity
+            np.std(velocities),          # motion variance
+            np.sum(velocities),          # motion energy
+            np.percentile(velocities, 75),
+            np.percentile(velocities, 90)
+        ]
+
+        motion_features.append(features)
+
+    return np.array(motion_features, dtype=np.float32)
